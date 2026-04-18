@@ -3,9 +3,9 @@ import type { RequestHandler } from './$types';
 import { submitFinal } from '$lib/server/game-sessions';
 import { rateLimit } from '$lib/server/rate-limit';
 
-export const POST: RequestHandler = async ({ request, getClientAddress }) => {
+export const POST: RequestHandler = async ({ request, getClientAddress, platform }) => {
 	const ip = getClientAddress();
-	if (!rateLimit(`submit:${ip}`, 10, 60_000)) {
+	if (!(await rateLimit(platform?.env?.RATE_LIMITS, `submit:${ip}`, 10, 60_000))) {
 		return json({ error: 'Too many requests' }, { status: 429 });
 	}
 
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		return json({ error: 'username required' }, { status: 400 });
 	}
 
-	const result = await submitFinal(sessionId, username);
+	const result = await submitFinal(platform?.env?.GAME_SESSIONS, sessionId, username);
 	if ('error' in result) {
 		return json({ error: result.error }, { status: 400 });
 	}

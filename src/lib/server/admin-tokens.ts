@@ -1,34 +1,48 @@
-const tokens = new Set<string>();
-const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7;
-const expiries = new Map<string, number>();
+import type { KVNamespace } from '@cloudflare/workers-types';
 
-function sweep() {
+const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+const KV_PREFIX = 'admin:';
+
+const memory = {
+	tokens: new Map<string, number>()
+};
+
+function sweepMemory() {
 	const now = Date.now();
-	for (const [token, exp] of expiries) {
-		if (exp < now) {
-			tokens.delete(token);
-			expiries.delete(token);
-		}
+	for (const [token, exp] of memory.tokens) {
+		if (exp < now) memory.tokens.delete(token);
 	}
 }
 
-export function issueToken(): string {
-	sweep();
+export async function issueToken(kv?: KVNamespace): Promise<string> {
 	const token = crypto.randomUUID();
-	tokens.add(token);
-	expiries.set(token, Date.now() + TOKEN_TTL_MS);
+	if (kv) {
+		await kv.put(KV_PREFIX + token, '1', { expirationTtl: TOKEN_TTL_SECONDS });
+	} else {
+		sweepMemory();
+		memory.tokens.set(token, Date.now() + TOKEN_TTL_SECONDS * 1000);
+	}
 	return token;
 }
 
-export function isValidToken(token: string | undefined): boolean {
+export async function isValidToken(
+	kv: KVNamespace | undefined,
+	token: string | undefined
+): Promise<boolean> {
 	if (!token) return false;
-	sweep();
-	return tokens.has(token);
+	if (kv) {
+		return (await kv.get(KV_PREFIX + token)) !== null;
+	}
+	sweepMemory();
+	return memory.tokens.has(token);
 }
 
-export function revokeToken(token: string) {
-	tokens.delete(token);
-	expiries.delete(token);
+export async function revokeToken(kv: KVNamespace | undefined, token: string): Promise<void> {
+	if (kv) {
+		await kv.delete(KV_PREFIX + token);
+	} else {
+		memory.tokens.delete(token);
+	}
 }
 
-export const TOKEN_COOKIE_MAX_AGE = TOKEN_TTL_MS / 1000;
+export const TOKEN_COOKIE_MAX_AGE = TOKEN_TTL_SECONDS;

@@ -1,0 +1,19 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "milk",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2025-01-15",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"directory": ".svelte-kit/cloudflare",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"kv_namespaces": [
+		{ "binding": "ADMIN_TOKENS", "id": "REPLACE_WITH_KV_ID" },
+		{ "binding": "RATE_LIMITS", "id": "REPLACE_WITH_KV_ID" },
+		{ "binding": "GAME_SESSIONS", "id": "REPLACE_WITH_KV_ID" }
+	]
+}

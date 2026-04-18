@@ -3,13 +3,13 @@ import type { RequestHandler } from './$types';
 import { startSession } from '$lib/server/game-sessions';
 import { rateLimit } from '$lib/server/rate-limit';
 
-export const POST: RequestHandler = async ({ getClientAddress }) => {
+export const POST: RequestHandler = async ({ getClientAddress, platform }) => {
 	const ip = getClientAddress();
-	if (!rateLimit(`start:${ip}`, 10, 60_000)) {
+	if (!(await rateLimit(platform?.env?.RATE_LIMITS, `start:${ip}`, 10, 60_000))) {
 		return json({ error: 'Too many requests' }, { status: 429 });
 	}
 	try {
-		const result = await startSession();
+		const result = await startSession(platform?.env?.GAME_SESSIONS);
 		return json(result);
 	} catch (err) {
 		console.error('start session failed', err);

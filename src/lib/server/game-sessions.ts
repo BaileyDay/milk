@@ -1,11 +1,12 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
 import { supabaseAdmin } from '$lib/server/supabase';
 import { getTierForScore, getMaxTierLevel, tiers, type Tier } from '$lib/data/tiers';
 import { shuffle } from '$lib/utils/shuffle';
 
-const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_TTL_SECONDS = 30 * 60;
 const DEADLINE_GRACE_MS = 250;
 const MAX_LIVES = 3;
-const FEEDBACK_DELAY_MS = 1800;
+const KV_PREFIX = 'session:';
 
 export type GamePhase = 'showing' | 'feedback' | 'gameover';
 
@@ -33,7 +34,7 @@ export interface GameSession {
 	submitted: boolean;
 }
 
-const sessions = new Map<string, GameSession>();
+const memorySessions = new Map<string, GameSession>();
 let imageCache: ServerImage[] | null = null;
 let imageCacheAt = 0;
 const IMAGE_CACHE_TTL_MS = 60 * 1000;
@@ -62,12 +63,46 @@ async function loadImages(): Promise<ServerImage[]> {
 	return imageCache;
 }
 
-function cleanupExpired() {
-	const cutoff = Date.now() - SESSION_TTL_MS;
-	for (const [id, session] of sessions) {
-		if (session.createdAt < cutoff) {
-			sessions.delete(id);
+async function readSession(kv: KVNamespace | undefined, id: string): Promise<GameSession | null> {
+	if (kv) {
+		const raw = await kv.get(KV_PREFIX + id);
+		if (!raw) return null;
+		try {
+			return JSON.parse(raw) as GameSession;
+		} catch {
+			return null;
 		}
+	}
+	sweepMemoryExpired();
+	return memorySessions.get(id) ?? null;
+}
+
+async function writeSession(
+	kv: KVNamespace | undefined,
+	session: GameSession,
+	deleted: boolean
+): Promise<void> {
+	if (kv) {
+		if (deleted) {
+			await kv.delete(KV_PREFIX + session.id);
+		} else {
+			await kv.put(KV_PREFIX + session.id, JSON.stringify(session), {
+				expirationTtl: SESSION_TTL_SECONDS
+			});
+		}
+		return;
+	}
+	if (deleted) {
+		memorySessions.delete(session.id);
+	} else {
+		memorySessions.set(session.id, session);
+	}
+}
+
+function sweepMemoryExpired() {
+	const cutoff = Date.now() - SESSION_TTL_SECONDS * 1000;
+	for (const [id, session] of memorySessions) {
+		if (session.createdAt < cutoff) memorySessions.delete(id);
 	}
 }
 
@@ -128,8 +163,7 @@ export interface StartResult {
 	phase: GamePhase;
 }
 
-export async function startSession(): Promise<StartResult> {
-	cleanupExpired();
+export async function startSession(kv: KVNamespace | undefined): Promise<StartResult> {
 	const all = await loadImages();
 	if (all.length === 0) throw new Error('No images available');
 
@@ -149,7 +183,7 @@ export async function startSession(): Promise<StartResult> {
 		submitted: false
 	};
 	scheduleRoundDeadline(session);
-	sessions.set(session.id, session);
+	await writeSession(kv, session, false);
 
 	const img = currentImage(session);
 	if (!img) throw new Error('No image to serve');
@@ -184,11 +218,11 @@ export interface AnswerResult {
 }
 
 export async function submitAnswer(
+	kv: KVNamespace | undefined,
 	sessionId: string,
 	answer: boolean | 'timeout'
 ): Promise<AnswerResult | { error: string }> {
-	cleanupExpired();
-	const session = sessions.get(sessionId);
+	const session = await readSession(kv, sessionId);
 	if (!session) return { error: 'Session not found or expired' };
 	if (session.phase !== 'showing') return { error: 'Round not active' };
 
@@ -211,10 +245,6 @@ export async function submitAnswer(
 		session.lives--;
 	}
 
-	// Lock this round against concurrent requests before any await.
-	session.phase = 'feedback';
-	session.roundEndsAt = null;
-
 	const explanation = img.explanation;
 	const all = await loadImages();
 
@@ -222,6 +252,7 @@ export async function submitAnswer(
 		session.phase = 'gameover';
 		session.roundEndsAt = null;
 		session.finalTierName = getTierForScore(session.score).name;
+		await writeSession(kv, session, false);
 		return {
 			correct,
 			timedOut: isTimeout,
@@ -240,6 +271,7 @@ export async function submitAnswer(
 	session.round++;
 	scheduleRoundDeadline(session);
 	session.phase = 'showing';
+	await writeSession(kv, session, false);
 
 	const nextImg = currentImage(session);
 	if (!nextImg) {
@@ -271,11 +303,11 @@ export interface SubmitResult {
 }
 
 export async function submitFinal(
+	kv: KVNamespace | undefined,
 	sessionId: string,
 	username: string
 ): Promise<SubmitResult | { error: string }> {
-	cleanupExpired();
-	const session = sessions.get(sessionId);
+	const session = await readSession(kv, sessionId);
 	if (!session) return { error: 'Session not found or expired' };
 	if (session.phase !== 'gameover') return { error: 'Game is not over' };
 	if (session.submitted) return { error: 'Score already submitted' };
@@ -290,6 +322,7 @@ export async function submitFinal(
 
 	const tierName = session.finalTierName ?? getTierForScore(session.score).name;
 	session.submitted = true;
+	await writeSession(kv, session, false);
 
 	const { data, error } = await supabaseAdmin
 		.from('leaderboard')
@@ -299,6 +332,7 @@ export async function submitFinal(
 
 	if (error || !data) {
 		session.submitted = false;
+		await writeSession(kv, session, false);
 		return { error: 'Failed to submit score' };
 	}
 
@@ -307,7 +341,7 @@ export async function submitFinal(
 		.select('*', { count: 'exact', head: true })
 		.gt('score', session.score);
 
-	sessions.delete(session.id);
+	await writeSession(kv, session, true);
 
 	return {
 		id: data.id as string,
@@ -315,10 +349,6 @@ export async function submitFinal(
 		score: session.score,
 		tierName
 	};
-}
-
-export function _debugSessionCount() {
-	return sessions.size;
 }
 
 export { tiers };

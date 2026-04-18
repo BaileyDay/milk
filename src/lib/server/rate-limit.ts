@@ -1,25 +1,49 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
+
 interface Bucket {
 	count: number;
 	resetAt: number;
 }
 
-const buckets = new Map<string, Bucket>();
+const memory = new Map<string, Bucket>();
 
-export function rateLimit(key: string, limit: number, windowMs: number): boolean {
+export async function rateLimit(
+	kv: KVNamespace | undefined,
+	key: string,
+	limit: number,
+	windowMs: number
+): Promise<boolean> {
 	const now = Date.now();
-	const existing = buckets.get(key);
+
+	if (kv) {
+		const raw = await kv.get(key);
+		let bucket: Bucket | null = null;
+		try {
+			bucket = raw ? (JSON.parse(raw) as Bucket) : null;
+		} catch {
+			bucket = null;
+		}
+		if (!bucket || now >= bucket.resetAt) {
+			const fresh: Bucket = { count: 1, resetAt: now + windowMs };
+			await kv.put(key, JSON.stringify(fresh), {
+				expirationTtl: Math.max(60, Math.ceil(windowMs / 1000))
+			});
+			return true;
+		}
+		if (bucket.count >= limit) return false;
+		bucket.count++;
+		await kv.put(key, JSON.stringify(bucket), {
+			expirationTtl: Math.max(60, Math.ceil((bucket.resetAt - now) / 1000))
+		});
+		return true;
+	}
+
+	const existing = memory.get(key);
 	if (!existing || now >= existing.resetAt) {
-		buckets.set(key, { count: 1, resetAt: now + windowMs });
+		memory.set(key, { count: 1, resetAt: now + windowMs });
 		return true;
 	}
 	if (existing.count >= limit) return false;
 	existing.count++;
 	return true;
-}
-
-export function _cleanup() {
-	const now = Date.now();
-	for (const [key, bucket] of buckets) {
-		if (now >= bucket.resetAt) buckets.delete(key);
-	}
 }

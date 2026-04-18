@@ -10,7 +10,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	if (isAdminArea && !isLogin) {
 		const token = event.cookies.get(ADMIN_COOKIE);
-		if (!isValidToken(token)) {
+		if (!(await isValidToken(event.platform?.env?.ADMIN_TOKENS, token))) {
 			throw redirect(303, '/admin/login');
 		}
 	}
