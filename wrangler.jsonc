@@ -3,7 +3,9 @@
 	"name": "milk",
 	"main": ".svelte-kit/cloudflare/_worker.js",
 	"compatibility_date": "2025-01-15",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"assets": {
 		"directory": ".svelte-kit/cloudflare",
 		"binding": "ASSETS"
@@ -12,8 +14,20 @@
 		"enabled": true
 	},
 	"kv_namespaces": [
-		{ "binding": "ADMIN_TOKENS", "id": "REPLACE_WITH_KV_ID" },
-		{ "binding": "RATE_LIMITS", "id": "REPLACE_WITH_KV_ID" },
-		{ "binding": "GAME_SESSIONS", "id": "REPLACE_WITH_KV_ID" }
+		{
+			"binding": "ADMIN_TOKENS",
+			"id": "acf62f43cbae49059289af78b3307e39",
+			"remote": true
+		},
+		{
+			"binding": "RATE_LIMITS",
+			"id": "b1d25d0b950e4c2cad1cac3939bb4933",
+			"remote": true
+		},
+		{
+			"binding": "GAME_SESSIONS",
+			"id": "ee1504e871d4433d899f5c856adb23db",
+			"remote": true
+		}
 	]
 }
