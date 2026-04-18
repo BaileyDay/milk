@@ -53,9 +53,7 @@
 
 		<!-- Image + Feedback -->
 		<div class="relative w-full max-w-md">
-			{#if game.phase === 'showing'}
-				<TimerBar />
-			{/if}
+			<TimerBar />
 			{#if game.currentImage}
 				<GameImage src={game.currentImage.src} alt={game.currentImage.alt} />
 			{/if}

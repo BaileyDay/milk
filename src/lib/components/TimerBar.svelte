@@ -29,14 +29,17 @@
 	const remainingMs = $derived(deadline === null ? limit : Math.max(0, deadline - now));
 	const remainingPct = $derived(Math.max(0, Math.min(100, (remainingMs / limit) * 100)));
 	const isDanger = $derived(remainingMs <= 1500);
+	const active = $derived(game.phase === 'showing');
 </script>
 
 <div class="mb-2 h-3 w-full border-2 border-base-content bg-base-100">
-	<div
-		class="h-full transition-[background-color] duration-150"
-		class:bg-primary={!isDanger}
-		class:bg-error={isDanger}
-		class:animate-pulse={isDanger}
-		style:width="{remainingPct}%"
-	></div>
+	{#if active}
+		<div
+			class="h-full transition-[background-color] duration-150"
+			class:bg-primary={!isDanger}
+			class:bg-error={isDanger}
+			class:animate-pulse={isDanger}
+			style:width="{remainingPct}%"
+		></div>
+	{/if}
 </div>
