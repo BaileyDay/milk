@@ -1,6 +1,6 @@
 import { fail, redirect, type Actions } from '@sveltejs/kit';
 import { dev } from '$app/environment';
-import { ADMIN_PASSWORD } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { issueToken, TOKEN_COOKIE_MAX_AGE } from '$lib/server/admin-tokens';
 
 const ADMIN_COOKIE = 'milk_admin';
@@ -10,7 +10,7 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const password = data.get('password');
 
-		if (typeof password !== 'string' || password !== ADMIN_PASSWORD) {
+		if (typeof password !== 'string' || password !== env.ADMIN_PASSWORD) {
 			return fail(401, { message: 'Incorrect password' });
 		}
 
