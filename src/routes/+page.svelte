@@ -61,6 +61,15 @@
 	</a>
 
 	<a
+		href="https://discord.gg/QVFbfARHJb"
+		target="_blank"
+		rel="noopener noreferrer"
+		class="btn mt-3 border-2 border-base-content bg-[#5865F2] font-bureau text-xs tracking-widest text-white uppercase hover:bg-[#4752c4]"
+	>
+		Join Discord
+	</a>
+
+	<a
 		href="/leaderboard"
 		class="btn mt-3 border-2 border-base-content font-bureau text-xs tracking-widest uppercase btn-ghost"
 	>
